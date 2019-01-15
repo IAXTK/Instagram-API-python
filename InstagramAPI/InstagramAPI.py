@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import requests
@@ -141,7 +141,7 @@ class InstagramAPI:
     def logout(self):
         logout = self.SendRequest('accounts/logout/')
 
-    def uploadPhoto(self, photo, caption=None, upload_id=None, is_sidecar=None):
+    def uploadPhoto(self, photo, caption=None, upload_id=None, is_sidecar=None, is_story=None):
         if upload_id is None:
             upload_id = str(int(time.time() * 1000))
         data = {'upload_id': upload_id,
@@ -162,7 +162,7 @@ class InstagramAPI:
                                'User-Agent': self.USER_AGENT})
         response = self.s.post(self.API_URL + "upload/photo/", data=m.to_string())
         if response.status_code == 200:
-            if self.configure(upload_id, photo, caption):
+            if self.configure(upload_id, photo, caption, is_story=is_story) and not is_story:
                 self.expose()
         return False
 
@@ -227,6 +227,9 @@ class InstagramAPI:
                 if self.configureVideo(upload_id, video, thumbnail, caption):
                     self.expose()
         return False
+
+    def uploadStoryPhoto(self, photo):
+        return self.uploadPhoto(photo, is_story=True)
 
     def uploadAlbum(self, media, caption=None, upload_id=None):
         if not media:
@@ -529,26 +532,43 @@ class InstagramAPI:
         })
         return self.SendRequest('media/configure/?video=1', self.generateSignature(data))
 
-    def configure(self, upload_id, photo, caption=''):
+    def configure(self, upload_id, photo, caption='', is_story=None):
         (w, h) = getImageSize(photo)
-        data = json.dumps({'_csrftoken': self.token,
-                           'media_folder': 'Instagram',
-                           'source_type': 4,
-                           '_uid': self.username_id,
-                           '_uuid': self.uuid,
-                           'caption': caption,
-                           'upload_id': upload_id,
-                           'device': self.DEVICE_SETTINTS,
-                           'edits': {
-                               'crop_original_size': [w * 1.0, h * 1.0],
-                               'crop_center': [0.0, 0.0],
-                               'crop_zoom': 1.0
-                           },
-                           'extra': {
-                               'source_width': w,
-                               'source_height': h
-                           }})
-        return self.SendRequest('media/configure/?', self.generateSignature(data))
+        data_dict = {
+            '_csrftoken': self.token,
+            '_uid': self.username_id,
+            '_uuid': self.uuid,
+            'device': self.DEVICE_SETTINTS,
+            'edits': {
+                'crop_original_size': [w * 1.0, h * 1.0],
+                'crop_center': [0.0, 0.0],
+                'crop_zoom': 1.0
+            },
+            'extra': {
+                'source_width': w,
+                'source_height': h,
+            },
+        }
+        if is_story:
+            data_dict.update({
+                'client_shared_at': str(int(time.time())),
+                'source_type': 3,
+                'configure_mode': 1,
+                'client_timestamp': str(int(time.time()) - random.randint(3, 10)),
+                'upload_id': upload_id,
+            })
+        else:
+            data_dict.update({
+                'caption': caption,
+                'source_type': 4,
+                'media_folder': 'Camera',
+                'upload_id': upload_id,
+            })
+        data = json.dumps(data_dict)
+        if is_story:
+            return self._sendRequest('media/configure_to_story/?', self.generateSignature(data))
+        else:
+            return self._sendRequest('media/configure/?', self.generateSignature(data))
 
     def editMedia(self, mediaId, captionText=''):
         data = json.dumps({'_uuid': self.uuid,
